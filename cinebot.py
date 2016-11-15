@@ -6,7 +6,6 @@ import urllib2
 import sys
 
 class Cine:
-
     def cleanupString(self,string):
         string = urllib2.unquote(string).decode('utf8')
         return HTMLParser.HTMLParser().unescape(string).encode(sys.getfilesystemencoding())
@@ -23,10 +22,6 @@ class Cine:
                 filmes.append(item.split("- </span>")[0].strip().decode('iso-8859-1').encode('utf8'))
 
         return [self.cleanupString(i) for i in filmes]
-
     #getFilmes
 #Cine
 
-c = Cine()
-for i in c.filmes:
-    print i

@@ -1,5 +1,5 @@
 #encoding: utf8
-import json, requests, pprint, telepot, urllib2, sys, re
+import json, requests, pprint, telepot, urllib2, urllib, sys, re, youtube_dl, io, os
 from time import strftime
 from youtube import BuscadorYoutube
 
@@ -15,6 +15,19 @@ opener = urllib2.build_opener(proxy_handler)
 urllib2.install_opener(opener)
 session = requests.Session()
 session.trust_env = False
+
+#Opcoes para download dos audios
+options = {
+    'format': 'bestaudio/best', # qualidade
+    #'extractaudio' : True,      # manter so audio
+    'outtmpl': '/musicas/%(id)s.%(ext)s',     # nome de saida
+    'postprocessors': [{
+        'key': 'FFmpegExtractAudio',
+        'preferredcodec': 'mp3',
+        'preferredquality': '192',
+    }],
+    'noplaylist' : True,        # baixar somente 1 musica, nao uma playlist inteira
+}
 
 class TelegramBot(telepot.Bot):
 
@@ -35,32 +48,28 @@ class TelegramBot(telepot.Bot):
     #handle_message()
 
     def handle_link(self, msg):
-        link = self.obterLinkFormatado(msg['text'])
+		video_id = self.obterLinkFormatado(msg['text'])
 
-        if link:
-            print LINK_API.format(link)
-            r = session.get(LINK_API.format(link))
+		if video_id:
+			with youtube_dl.YoutubeDL(options) as ydl:
+				#Obtém metainformações do vídeo
+				meta = ydl.extract_info(video_id, download=False) 
+				self.sendMessage(msg['chat']['id'], "Requisição recebida\nNome: {}\nProcessando, isso pode levar alguns minutos...".format(meta['title']))
 
-            if r.status_code == 200:
-                dados = json.loads(r.text)
-                self.sendMessage(msg['chat']['id'], "Requisição recebida\nNome: {}\nProcessando, isso pode levar alguns minutos...".format(dados['title']))
-                musica = urllib2.urlopen(dados['link'])
+				#Nome do arquivo
+				arquivo = 'musicas/' + video_id + '.mp3'
 
-                #TO BEMMMMMMM??????????
-                print musica.code
-                print musica.headers['content-length']
+				#Verifica se já foi baixado. Se não foi, baixa
+				if os.path.isfile(arquivo) != True:
+					ydl.download([video_id])
+				#if
 
-                #Combate a bugs
-                if not musica.code == 200 or musica.headers['content-length'] < 22300:
-                    musica = urllib2.urlopen(dados['link'])
-                #if
-
-                self.sendAudio(msg['chat']['id'], (dados['title'] + ".mp3", musica))
-                self.sendMessage(msg['chat']['id'], "Tudo feito!\nObrigado por ter utilizado! \nDesenvolvido por J.Ricardo")
-                return
-            #if
+				self.sendAudio(msg['chat']['id'], (meta['title'] + ".mp3", urllib2.urlopen('file:' + urllib.pathname2url(arquivo))))
+				self.sendMessage(msg['chat']['id'], "Tudo feito!\nObrigado por ter utilizado! \nDesenvolvido por J.Ricardo")
+            #with
+			return  
         #if
-        self.sendMessage(msg['chat']['id'], "Algo deu errado, verifique se o link está correto :/")
+		self.sendMessage(msg['chat']['id'], "Algo deu errado, verifique se o link está correto :/")
 	#handle_link()
 
     def handle_musica(self, msg):
