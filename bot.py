@@ -1,7 +1,9 @@
 #encoding: utf8
-import json, requests, pprint, telepot, urllib2, urllib, sys, re, youtube_dl, io, os
+import json, requests, pprint, telepot, urllib2, urllib, sys, re, youtube_dl, io, os, threading
 from time import strftime
 from youtube import BuscadorYoutube
+from cinebot import Cine
+from letrasbot import Api
 
 # Configurando a codificação de todo o programa para UTF-8
 reload(sys)
@@ -18,9 +20,8 @@ session.trust_env = False
 
 #Opcoes para download dos audios
 options = {
-    'format': 'bestaudio/best', # qualidade
-    #'extractaudio' : True,      # manter so audio
-    'outtmpl': '/musicas/%(id)s.%(ext)s',     # nome de saida
+    'format': 'bestaudio/best',              # qualidade
+    'outtmpl': '/musicas/%(id)s.%(ext)s',    # nome de saida
     'postprocessors': [{
         'key': 'FFmpegExtractAudio',
         'preferredcodec': 'mp3',
@@ -31,27 +32,28 @@ options = {
 
 class TelegramBot(telepot.Bot):
 
-    def __init__(self, token):
-        super(TelegramBot, self).__init__(token)
-    #__init__()
+	def __init__(self, token):
+		super(TelegramBot, self).__init__(token)
+	#__init__()
 
-    def handle_message(self, msg):
-        if 'text' not in msg:
-            return
-        #if
+	def handle_message(self, msg):
+		if 'text' not in msg:
+			return
+		#if
 
-        if msg['text'].startswith('/'):
-            self.handle_command(msg)
-        else:
+		if msg['text'].startswith('/'):
+			self.handle_command(msg)
+		else:
 			self.handle_link(msg)
-        #else
-    #handle_message()
+		#else
+	#handle_message()
 
-    def handle_link(self, msg):
+	def handle_link(self, msg):
 		video_id = self.obterLinkFormatado(msg['text'])
 
 		if video_id:
 			with youtube_dl.YoutubeDL(options) as ydl:
+
 				#Obtém metainformações do vídeo
 				meta = ydl.extract_info(video_id, download=False) 
 				self.sendMessage(msg['chat']['id'], "Requisição recebida\nNome: {}\nProcessando, isso pode levar alguns minutos...".format(meta['title']))
@@ -66,65 +68,135 @@ class TelegramBot(telepot.Bot):
 
 				self.sendAudio(msg['chat']['id'], (meta['title'] + ".mp3", urllib2.urlopen('file:' + urllib.pathname2url(arquivo))))
 				self.sendMessage(msg['chat']['id'], "Tudo feito!\nObrigado por ter utilizado! \nDesenvolvido por J.Ricardo")
-            #with
+			#with
 			return  
         #if
 		self.sendMessage(msg['chat']['id'], "Algo deu errado, verifique se o link está correto :/")
 	#handle_link()
 
-    def handle_musica(self, msg):
-        nomeMusica = msg['text'].split("/musica")[1].strip()
-        buscador = BuscadorYoutube()
-        res = buscador.buscar(nomeMusica)
+	def handle_musica(self, msg):
+		nomeMusica = msg['text'].split("/musica")[1].strip()
 
-        msg['text'] = 'http://www.youtube.com/watch?v=' + res['id']
+		vazio = True
+		for aux in nomeMusica:
+			if aux != "":
+				vazio = False
+			#if
+		#for
+
+		if vazio == True:
+			self.sendMessage(msg['chat']['id'], "Verifique se enviou os dados no formato certo!")
+			return
+		#if
+
+		buscador = BuscadorYoutube()
+		res = buscador.buscar(nomeMusica)
+
+		msg['text'] = 'http://www.youtube.com/watch?v=' + res['id']
         
-        return self.handle_link(msg) 
-    #handle_musica()
+		return self.handle_link(msg) 
+	#handle_musica()
 
-    def obterLinkFormatado(self, url):
-        youtube_regex = (r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)/(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})')
-        youtube_regex_match = re.match(youtube_regex, url)
+	def handle_info(self, msg):
+		nomeFilme = msg['text'].split("/info")[1].strip()
 
-        if youtube_regex_match:
-            return youtube_regex_match.group(6)
-        #if
+		vazio = True
+		for aux in nomeFilme:
+			if aux != "":
+				vazio = False
+			#if
+		#for
 
-        return youtube_regex_match
-    #obterLinkFormatado()
+		if vazio == True:
+			self.sendMessage(msg['chat']['id'], "Verifique se enviou os dados no formato certo!")
+			return
+		#if
 
-    def handle_start(self, msg):
-        self.sendMessage(msg['chat']['id'], "Esse bot deveria servir pra baixar músicas...")
-    #handle_start()
+		api = Api()
+		info = json.loads(json.loads(api.infoFilme(nomeFilme)))
 
-    def handle_time(self, msg):
-        self.sendMessage(msg['chat']['id'], strftime("Data: %d/%m/%Y\nHora: %H:%M:%S"))
-    #handle_time()
+		if info['Response'] == "True":
+			res = '''Nome: {}\nAno: {}\nTamanho: {}\nMetascore: {}\nIMDB: {}\n
+			'''.format(info['Title'], info['Year'], info['Runtime'], info['Metascore'], info['imdbRating'])
 
-    def handle_command(self, msg):
-        comando = msg['text'].strip().split(" ")[0].split("/")[1]
-        method = 'handle_' + comando
+			self.sendMessage(msg['chat']['id'], res)
+		else:
+			self.sendMessage(msg['chat']['id'], "Esse filme provavelmente não existe!")
+		#else
+	#handle_info()
 
-        if hasattr(self, method):
-            getattr(self, method)(msg)
-        #if
-    #handle_command()
+	def handle_letra(self, msg):
+		try:
+			aux = msg['text'].split("/letra")[1].strip().split("-")
+			api = Api()
+			letra = api.letraMusica(aux[0].strip(), aux[1].strip())
 
-    def runBot(self):
-        last_offset = 0
-        print('Ouvindo...')
+			if letra == "":
+				self.sendMessage(msg['chat']['id'], "Algo deu errado, verifique se os dados estão corretos :(")
+			else:
+				self.sendMessage(msg['chat']['id'], letra)
+			#else
+		except:
+			self.sendMessage(msg['chat']['id'], "Verifique se enviou os dados no formato certo, que é: \n\n/letra <nome_musica> - <nome_artista>")
+		#except
+	#handle_letra()
 
-        while True:
-            updates = self.getUpdates(timeout=60, offset=last_offset)
+	def obterLinkFormatado(self, url):
+		youtube_regex = (r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)/(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})')
+		youtube_regex_match = re.match(youtube_regex, url)
 
-            if updates:
-                for aux in updates:
-                    self.handle_message(aux['message'])
-                #for
-                last_offset = updates[-1]['update_id'] + 1
-            #if
-        #while
-    #runBot()
+		if youtube_regex_match:
+			return youtube_regex_match.group(6)
+		#if
+
+		return youtube_regex_match
+	#obterLinkFormatado()
+
+	def handle_start(self, msg):
+		aux = '''
+			Bem vindo ao LJBot! Este bot tem o objetivo de fornecer diversos serviços utilitários relacionados a multimídia.
+
+			Comandos disponíveis:\n
+			/start - Exibe texto inicial de ajuda\n
+			/time - Exibe a hora e data do servidor\n
+			/musica <nome_musica> - Baixa uma música através de seu nome\n
+			/musica <nome_musica - nome_artista> - Baixa uma música através de seu nome e do nome do artista\n
+			<link_youtube> - Baixa uma música através de seu link do Youtube\n
+			/letra <nome_musica - nome_artista> - Exibe a letra de uma música a partir de seu nome e do nome do artista\n
+			/info <nome_filme> - Exibe as informações de um filme
+
+		'''
+		self.sendMessage(msg['chat']['id'], aux)
+	#handle_start()
+
+	def handle_time(self, msg):
+		self.sendMessage(msg['chat']['id'], strftime("Data: %d/%m/%Y\nHora: %H:%M:%S"))
+	#handle_time()
+
+	def handle_command(self, msg):
+		comando = msg['text'].strip().split(" ")[0].split("/")[1]
+		method = 'handle_' + comando
+
+		if hasattr(self, method):
+			getattr(self, method)(msg)
+		#if
+	#handle_command()
+
+	def runBot(self):
+		last_offset = 0
+		print('Ouvindo...')
+
+		while True:
+			updates = self.getUpdates(timeout=60, offset=last_offset)
+
+			if updates:
+				for aux in updates:
+					self.handle_message(aux['message'])
+				#for
+				last_offset = updates[-1]['update_id'] + 1
+		#if
+		#while
+	#runBot()
 #TelegramBot
 
 if __name__ == "__main__":

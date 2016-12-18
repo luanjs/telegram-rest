@@ -3,6 +3,8 @@ import json
 from youtube import BuscadorYoutube
 import youtube_dl
 import urllib2, urllib
+from cinebot import Cine
+from letrasbot import Api
 
 def youtube_url_validation(url):
 	youtube_regex = (r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)/(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})')
@@ -15,10 +17,9 @@ def youtube_url_validation(url):
 	return youtube_regex_match
 #youtube_url_validation()
 
-'''b = BuscadorYoutube()
-print b.buscar("rito pls")['nome']'''
+
+api = Api()
+print api.infoFilme("troia")
 
 
-a = urllib2.urlopen('file:' + urllib.pathname2url('musicas/Metallica - Ronnie Rising Medley (A Tribute To Dio) HQ.mp3'))
-print a
 
